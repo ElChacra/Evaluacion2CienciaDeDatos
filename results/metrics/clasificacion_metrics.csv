@@ -1,0 +1,12 @@
+modelo,accuracy,f1,roc_auc,threshold
+RandomForest,0.8954,0.9427,0.7586,0.45
+VotingEnsemble_Optuna,0.8938,0.9413,0.7735,0.52
+GradientBoosting,0.893,0.9408,0.7743,0.63
+DecisionTree,0.8928,0.941,0.7282,0.21
+XGBoost_Optuna,0.8927,0.9406,0.7717,0.32
+VotingEnsemble,0.8926,0.9405,0.7756,0.51
+LightGBM_Optuna,0.8922,0.9402,0.7714,0.65
+LogisticRegression,0.8918,0.9403,0.7535,0.2
+XGBoost,0.8917,0.9399,0.7737,0.35
+LightGBM,0.8912,0.9396,0.7707,0.62
+CatBoost_Optuna,0.8905,0.9392,0.7683,0.36

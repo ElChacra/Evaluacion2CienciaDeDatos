@@ -1,0 +1,147 @@
+# ── RAW (01_raw) ─────────────────────────────────────────────────────────────
+olist_orders:
+  type: pandas.CSVDataset
+  filepath: data/01_raw/olist_orders_dataset.csv
+  load_args:
+    encoding: utf-8
+
+olist_customers:
+  type: pandas.CSVDataset
+  filepath: data/01_raw/olist_customers_dataset.csv
+  load_args:
+    encoding: utf-8
+
+olist_order_items:
+  type: pandas.CSVDataset
+  filepath: data/01_raw/olist_order_items_dataset.csv
+  load_args:
+    encoding: utf-8
+
+olist_payments:
+  type: pandas.CSVDataset
+  filepath: data/01_raw/olist_order_payments_dataset.csv
+  load_args:
+    encoding: utf-8
+
+olist_reviews:
+  type: pandas.CSVDataset
+  filepath: data/01_raw/olist_order_reviews_dataset.csv
+  load_args:
+    encoding: utf-8
+
+olist_products:
+  type: pandas.CSVDataset
+  filepath: data/01_raw/olist_products_dataset.csv
+  load_args:
+    encoding: utf-8
+
+olist_sellers:
+  type: pandas.CSVDataset
+  filepath: data/01_raw/olist_sellers_dataset.csv
+  load_args:
+    encoding: utf-8
+
+category_translation:
+  type: pandas.CSVDataset
+  filepath: data/01_raw/product_category_name_translation.csv
+  load_args:
+    encoding: utf-8
+
+# ── INTERMEDIATE (02) ────────────────────────────────────────────────────────
+dataset_merged:
+  type: pandas.CSVDataset
+  filepath: data/02_intermediate/dataset_merged.csv
+  load_args:
+    encoding: utf-8
+  save_args:
+    encoding: utf-8
+    index: false
+
+# ── PRIMARY (03) ─────────────────────────────────────────────────────────────
+dataset_clean:
+  type: pandas.CSVDataset
+  filepath: data/03_primary/dataset_clean.csv
+  load_args:
+    encoding: utf-8
+  save_args:
+    encoding: utf-8
+    index: false
+
+# ── FEATURE (04) ─────────────────────────────────────────────────────────────
+dataset_features:
+  type: pandas.CSVDataset
+  filepath: data/04_feature/dataset_features.csv
+  load_args:
+    encoding: utf-8
+  save_args:
+    encoding: utf-8
+    index: false
+
+# ── MODEL INPUT (05) ─────────────────────────────────────────────────────────
+dataset_final:
+  type: pandas.CSVDataset
+  filepath: data/05_model_input/dataset_final.csv
+  load_args:
+    encoding: utf-8
+  save_args:
+    encoding: utf-8
+    index: false
+
+dataset_validated:
+  type: pandas.CSVDataset
+  filepath: data/05_model_input/dataset_validated.csv
+  load_args:
+    encoding: utf-8
+  save_args:
+    encoding: utf-8
+    index: false
+
+# ── MODEL OUTPUT (07) ────────────────────────────────────────────────────────
+metricas_clasificacion:
+  type: pandas.CSVDataset
+  filepath: data/07_model_output/metricas_clasificacion.csv
+  save_args:
+    encoding: utf-8
+    index: false
+
+metricas_regresion:
+  type: pandas.CSVDataset
+  filepath: data/07_model_output/metricas_regresion.csv
+  save_args:
+    encoding: utf-8
+    index: false
+
+metricas_clustering:
+  type: pandas.CSVDataset
+  filepath: data/07_model_output/metricas_clustering.csv
+  save_args:
+    encoding: utf-8
+    index: false
+
+metricas_pca:
+  type: pandas.CSVDataset
+  filepath: data/07_model_output/metricas_pca.csv
+  save_args:
+    encoding: utf-8
+    index: false
+
+resultados_gridsearch:
+  type: pandas.CSVDataset
+  filepath: data/07_model_output/resultados_gridsearch.csv
+  save_args:
+    encoding: utf-8
+    index: false
+
+resultados_randomsearch:
+  type: pandas.CSVDataset
+  filepath: data/07_model_output/resultados_randomsearch.csv
+  save_args:
+    encoding: utf-8
+    index: false
+
+comparacion_optimizacion:
+  type: pandas.CSVDataset
+  filepath: data/07_model_output/comparacion_optimizacion.csv
+  save_args:
+    encoding: utf-8
+    index: false

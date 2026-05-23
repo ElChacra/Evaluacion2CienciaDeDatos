@@ -95,6 +95,24 @@ olist-ecommerce/
 
 ---
 
+## Modelos grandes (no incluidos en el repo)
+
+Los archivos `RandomForest.pkl` (430 MB) y `RandomForestReg.pkl` (461 MB) superan el límite de 100 MB de GitHub y no están incluidos en el repositorio.
+
+**Si clonas el repo y ejecutas NB03 directamente, obtendrás un `FileNotFoundError`.**
+
+Para regenerarlos antes de usar los notebooks de evaluación:
+
+```bash
+# Opción A — pipeline completo Kedro (recomendado)
+.venv\Scripts\kedro.exe run
+
+# Opción B — solo el notebook de entrenamiento
+# Ejecutar 02_supervised_modeling.ipynb completo (genera todos los .pkl)
+```
+
+---
+
 ## Instalación y Uso
 
 ### Requisitos previos

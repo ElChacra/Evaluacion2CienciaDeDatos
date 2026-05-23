@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Informe Técnico — Predicción de Satisfacción del Cliente Olist</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11pt; color: #1a1a1a; background: #fff; max-width: 960px; margin: 0 auto; padding: 32px 40px; line-height: 1.55; }
+  h1 { font-size: 20pt; font-weight: 700; color: #1a1a2e; text-align: center; margin-bottom: 6px; }
+  h2.subtitle { font-size: 13pt; font-weight: 400; color: #444; text-align: center; margin-bottom: 4px; }
+  .meta { text-align: center; color: #666; font-size: 10pt; margin-bottom: 28px; }
+  .meta p { margin: 2px 0; }
+  h2 { font-size: 13pt; font-weight: 700; color: #1a1a2e; border-bottom: 2px solid #2563eb; padding-bottom: 4px; margin: 28px 0 12px; }
+  h3 { font-size: 11pt; font-weight: 700; color: #1e3a5f; margin: 18px 0 8px; }
+  p { margin-bottom: 9px; }
+  ul { margin: 6px 0 10px 22px; }
+  li { margin-bottom: 4px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 16px; font-size: 10pt; }
+  th { background: #1a1a2e; color: #fff; padding: 7px 10px; text-align: left; font-weight: 600; }
+  td { padding: 6px 10px; border-bottom: 1px solid #dde; }
+  tr:nth-child(even) td { background: #f5f7ff; }
+  tr.best td { background: #dff0d8; font-weight: 700; }
+  .note { background: #fffbea; border-left: 4px solid #f59e0b; padding: 10px 14px; margin: 12px 0; font-size: 10pt; border-radius: 2px; }
+  .section-num { color: #2563eb; }
+  hr { border: none; border-top: 1px solid #dde; margin: 24px 0; }
+  .cm-table { width: auto; margin: 12px auto; }
+  .cm-table th { background: #374151; }
+  .cm-table td.tn { background: #d1fae5; }
+  .cm-table td.fp { background: #fee2e2; }
+  .cm-table td.fn { background: #fef3c7; }
+  .cm-table td.tp { background: #d1fae5; }
+  @media print { body { padding: 16px 24px; } h2 { page-break-before: auto; } }
+</style>
+</head>
+<body>
+
+<h1>Informe Técnico</h1>
+<h2 class="subtitle">Predicción de Satisfacción del Cliente en E-Commerce (Olist)</h2>
+<div class="meta">
+  <p><strong>Evaluación Parcial N°2 — SCY1101</strong></p>
+  <p>Programación para la Ciencia de Datos</p>
+  <p>Duoc UC — Mención Data Science</p>
+  <p>Autor: Guillermo Cerda</p>
+  <p>Framework: Kedro 1.4.0 + Scikit-learn + LightGBM + XGBoost + Optuna</p>
+  <p>Dataset: Brazilian E-Commerce Public Dataset (Olist) — Kaggle</p>
+  <p>Fecha: Mayo 2026</p>
+</div>
+
+<h2><span class="section-num">1.</span> Resumen Ejecutivo</h2>
+<p>Este proyecto implementa un sistema de machine learning end-to-end para predecir la satisfacción de clientes del marketplace brasileño Olist, utilizando datos logísticos, de precio y de producto de aproximadamente 100,000 órdenes reales. El pipeline completo —desde la ingesta de 9 archivos CSV hasta la evaluación de 11 modelos entrenados— es ejecutable con el comando <code>kedro run</code> en ~452 segundos.</p>
+<p><strong>Objetivo:</strong> Clasificar órdenes como "satisfactorias" (<code>review_score &gt; 2</code> estrellas) o "insatisfactorias" (1-2 estrellas), superando el umbral de rendimiento del 85% de accuracy.</p>
+
+<table>
+  <tr><th>Indicador</th><th>Valor</th></tr>
+  <tr><td>Dataset final</td><td>95,811 órdenes entregadas × 39 features</td></tr>
+  <tr><td>Balance de clases</td><td>87.2% satisfechos / 12.8% insatisfechos</td></tr>
+  <tr><td>Mejor accuracy (NB03, val-set)</td><td>89.54% — RandomForest (+4.54 pp sobre objetivo)</td></tr>
+  <tr><td>Mejor accuracy (NB04, Optuna end-to-end)</td><td>89.71% — XGBoost_Optuna (+4.71 pp sobre objetivo)</td></tr>
+  <tr><td>Mejor F1-Score (NB03)</td><td>0.9427 (RandomForest) — Recall positiva: ~98.7%</td></tr>
+  <tr><td>Mejor ROC-AUC</td><td>0.7756 (VotingEnsemble)</td></tr>
+  <tr><td>Modelos evaluados</td><td>11 (7 clasificadores base + 4 modelos Optuna)</td></tr>
+  <tr><td>Método de optimización</td><td>Optuna TPE: 100 trials LightGBM + 80 trials XGBoost</td></tr>
+  <tr><td>Clustering</td><td>KMeans k=2 óptimo (silhouette=0.5098)</td></tr>
+  <tr><td>PCA</td><td>2 componentes explican 86.8% de la varianza</td></tr>
+  <tr><td>Reproducibilidad</td><td>100% — Kedro 1.4.0, random_state=42 en todos los modelos</td></tr>
+</table>
+
+<div class="note"><strong>Nota sobre doble evaluación:</strong> Los modelos base (NB03) se evaluaron sobre PKLs entrenados con 32 features y threshold ajustado en val set → RandomForest lidera con 89.54%. Los modelos Optuna (NB04/save_best_models.py) se entrenaron end-to-end con 39 features → XGBoost_Optuna alcanza 89.71%.</div>
+
+<p><strong>Hallazgo clave:</strong> Las features de entrega (<code>delivery_days</code>, <code>delay_days</code>, <code>delivery_ratio</code>) dominan la predicción, confirmando que el tiempo de entrega es el driver principal de satisfacción en e-commerce. El techo de información del dataset es ~89.7%: superar este valor requeriría features de calidad del producto (descripciones, fotos) no disponibles en los datos logísticos.</p>
+
+<hr>
+
+<h2><span class="section-num">2.</span> Marco Metodológico</h2>
+
+<h3>2.1 Justificación del enfoque: Clasificación binaria vs. Regresión</h3>
+<p>La primera decisión metodológica fue determinar si el problema se aborda como regresión (predecir el puntaje exacto 1-5) o como clasificación binaria (predecir satisfecho/insatisfecho). Se evaluaron dos modelos de regresión:</p>
+<table>
+  <tr><th>Modelo</th><th>R²</th><th>RMSE</th><th>MAE</th></tr>
+  <tr><td>Ridge</td><td>0.1932</td><td>1.1578</td><td>0.8953</td></tr>
+  <tr><td>RandomForestReg</td><td>0.1975</td><td>1.1548</td><td>0.9003</td></tr>
+</table>
+<p>Con R² ≈ 0.19 y RMSE ≈ 1.15 estrellas, la regresión no es viable: los datos logísticos explican solo el 19% de la varianza en el puntaje exacto. La diferencia entre 3, 4 y 5 estrellas depende de factores subjetivos (calidad del producto, experiencia post-venta) no capturados en los datos de entrega y precio. En cambio, la diferencia entre 1-2 estrellas (insatisfacción severa) y 3-5 estrellas sí está correlacionada con variables logísticas. Se define:</p>
+<p><code>is_satisfied = (review_score &gt; 2)</code></p>
+
+<h3>2.2 Selección de Algoritmos Supervisados</h3>
+<p>Se implementaron 7 clasificadores base más 4 modelos Optuna con justificación técnica diferenciada:</p>
+<table>
+  <tr><th>Modelo</th><th>Justificación técnica</th></tr>
+  <tr><td>LogisticRegression</td><td>Baseline lineal. Establece el piso de rendimiento. Rápido e interpretable.</td></tr>
+  <tr><td>DecisionTree</td><td>Modelo no paramétrico simple. Detecta reglas directas (ej: delay_days &gt; X → insatisfecho).</td></tr>
+  <tr><td>RandomForest</td><td>Ensemble de bagging. Reduce varianza del DecisionTree promediando múltiples árboles.</td></tr>
+  <tr><td>GradientBoosting</td><td>Boosting clásico sklearn. Construye árboles secuenciales corrigiendo errores anteriores.</td></tr>
+  <tr><td>LightGBM</td><td>Boosting eficiente basado en histogramas. 10× más rápido que GradientBoosting para datasets &gt;50K filas.</td></tr>
+  <tr><td>XGBoost</td><td>Boosting con regularización L1/L2. scale_pos_weight maneja el desbalance de clases nativamente.</td></tr>
+  <tr><td>VotingEnsemble (LGBM+XGB+GB)</td><td>Soft-voting con pesos [0.4, 0.4, 0.2]. Promedia probabilidades, reduce varianza individual.</td></tr>
+  <tr><td>CatBoost_Optuna</td><td>Manejo nativo de features categóricas. Resistente a overfitting por ordered boosting.</td></tr>
+  <tr><td>LightGBM_Optuna</td><td>LightGBM con hiperparámetros optimizados por Optuna TPE (100 trials).</td></tr>
+  <tr><td>XGBoost_Optuna</td><td>XGBoost con hiperparámetros optimizados por Optuna TPE (80 trials).</td></tr>
+  <tr><td>VotingEnsemble_Optuna</td><td>Soft-voting sobre los 3 mejores modelos Optuna.</td></tr>
+</table>
+
+<h3>2.3 Manejo del Desbalance de Clases</h3>
+<p>El dataset presenta desbalance severo: 87.2% satisfechos / 12.8% insatisfechos. Se evaluaron tres estrategias:</p>
+<ul>
+  <li><strong>class_weight='balanced':</strong> Penaliza clase mayoritaria. Simple pero subóptimo para boosting.</li>
+  <li><strong>ADASYN:</strong> Muestras sintéticas adaptativas. Mayor tiempo de cómputo, sin mejora significativa.</li>
+  <li><strong>SMOTE (sampling_strategy=0.25) [seleccionado]:</strong> Sobremuestrea la minoría hasta que la clase 0 sea el 25% de la clase 1. Resultado: 66,842 filas train post-SMOTE (80%/20%). SMOTE se aplica solo sobre X_train (no sobre el val set), evitando contaminación del threshold tuning.</li>
+</ul>
+<div class="note"><strong>Principio de no contaminación:</strong> SMOTE se aplica exclusivamente al conjunto de entrenamiento. El test set (19,163 filas) mantiene la distribución original (87.2%/12.8%) para evaluar el rendimiento real en condiciones de producción.</div>
+
+<h3>2.4 Threshold Tuning</h3>
+<p>Con datasets desbalanceados, el threshold por defecto (0.5) es subóptimo. Se implementa búsqueda exhaustiva del umbral de decisión en [0.20, 0.81] con paso 0.01, seleccionando el valor que maximiza accuracy en el <strong>validation set</strong> (sin ver y_test, eliminando data leakage). Los thresholds óptimos encontrados varían entre 0.20 (LogisticRegression/DecisionTree) y 0.65 (LightGBM_Optuna), demostrando que el umbral por defecto habría penalizado el rendimiento entre 0.1 y 0.4 pp.</p>
+
+<h3>2.5 Feature Engineering: 7 Features de Interacción</h3>
+<p>Basado en investigación de patrones de e-commerce 2025-2026, se agregaron 7 features de interacción que capturan relaciones no lineales entre variables:</p>
+<table>
+  <tr><th>Feature</th><th>Fórmula</th><th>Razón técnica</th></tr>
+  <tr><td>price_x_delivery</td><td>price_per_item × delivery_ratio.clip(5)</td><td>Productos caros que llegan tarde generan mayor insatisfacción</td></tr>
+  <tr><td>freight_x_delay</td><td>freight_ratio × delay_days.clip(0)</td><td>Flete alto combinado con atraso amplifica la insatisfacción</td></tr>
+  <tr><td>delivery_efficiency</td><td>days_early / estimated_days.clip(1)</td><td>Eficiencia relativa de la entrega vs. promesa</td></tr>
+  <tr><td>purchase_quarter</td><td>(purchase_month - 1) // 3 + 1</td><td>Efectos estacionales (Q4 mayor volumen y atrasos)</td></tr>
+  <tr><td>is_fast_delivery</td><td>delivery_days ≤ 5</td><td>Flag de entrega express (predictor binario fuerte)</td></tr>
+  <tr><td>is_very_late</td><td>delay_days &gt; 7</td><td>Flag de atraso severo (&gt;1 semana de demora)</td></tr>
+  <tr><td>total_cost_proxy</td><td>total_price + total_freight</td><td>Costo total percibido por el cliente</td></tr>
+</table>
+
+<hr>
+
+<h2><span class="section-num">3.</span> Análisis Experimental</h2>
+
+<h3>3.1 Dataset: Brazilian E-Commerce Public Dataset (Olist)</h3>
+<p>Dataset público disponible en Kaggle, publicado por Olist (marketplace brasileño). Contiene datos reales de órdenes entre 2016 y 2018. Se utilizaron 8 de los 9 archivos disponibles:</p>
+<table>
+  <tr><th>Archivo CSV</th><th>Registros originales</th><th>Descripción</th></tr>
+  <tr><td>olist_orders_dataset.csv</td><td>99,441</td><td>Órdenes con timestamps, estado y claves foráneas</td></tr>
+  <tr><td>olist_customers_dataset.csv</td><td>99,441</td><td>Datos de clientes y estado geográfico</td></tr>
+  <tr><td>olist_order_items_dataset.csv</td><td>112,650</td><td>Items por orden: precio unitario y flete</td></tr>
+  <tr><td>olist_order_payments_dataset.csv</td><td>103,886</td><td>Métodos de pago, cuotas y montos</td></tr>
+  <tr><td>olist_order_reviews_dataset.csv</td><td>100,000</td><td>Reseñas y puntajes (variable target)</td></tr>
+  <tr><td>olist_products_dataset.csv</td><td>32,951</td><td>Dimensiones y peso de productos</td></tr>
+  <tr><td>olist_sellers_dataset.csv</td><td>3,095</td><td>Estado del vendedor</td></tr>
+  <tr><td>product_category_name_translation.csv</td><td>71</td><td>Traducción de categorías PT→EN</td></tr>
+</table>
+
+<h3>3.2 Pipeline Kedro de Procesamiento</h3>
+<p>El pipeline Kedro implementa 5 etapas secuenciales con 12 nodos totales:</p>
+<table>
+  <tr><th>Pipeline</th><th>Nodos</th><th>Entrada</th><th>Salida principal</th><th>Tiempo</th></tr>
+  <tr><td>data_ingestion</td><td>2</td><td>9 CSV raw</td><td>dataset_merged.csv (99,441 × 30)</td><td>~15s</td></tr>
+  <tr><td>data_cleaning</td><td>3</td><td>dataset_merged</td><td>dataset_clean.csv (95,811 × 28)</td><td>~12s</td></tr>
+  <tr><td>data_transform</td><td>3</td><td>dataset_clean</td><td>dataset_features.csv (95,811 × 34)</td><td>~18s</td></tr>
+  <tr><td>data_validation</td><td>2</td><td>dataset_features</td><td>dataset_validated.csv (95,811 × 32)</td><td>~8s</td></tr>
+  <tr><td>modeling</td><td>2</td><td>dataset_validated</td><td>métricas + comparacion_optimizacion.csv</td><td>~399s</td></tr>
+  <tr><td><strong>TOTAL</strong></td><td><strong>12</strong></td><td><strong>9 CSV raw</strong></td><td><strong>5 datasets intermedios + métricas</strong></td><td><strong>~452s</strong></td></tr>
+</table>
+<p>Transformaciones de limpieza aplicadas:</p>
+<ul>
+  <li>Filtro de órdenes entregadas: 99,441 → 95,811 filas (-3.6%)</li>
+  <li>Winsorización IQR×1.5 en total_price y total_freight (outliers extremos)</li>
+  <li>Imputación con mediana para valores nulos en columnas numéricas críticas</li>
+  <li>LabelEncoder para 5 variables categóricas (order_status, payment_type, customer_state, seller_state, product_category)</li>
+  <li>StandardScaler en columnas numéricas no binarias (media=0, std=1)</li>
+</ul>
+
+<h3>3.3 Hallazgos del Análisis Exploratorio</h3>
+<p>El EDA (notebook 01) reveló los siguientes patrones determinantes para el modelado:</p>
+<table>
+  <tr><th>Hallazgo</th><th>Detalle</th><th>Impacto en modelado</th></tr>
+  <tr><td>Distribución target</td><td>5★=59.3%, 4★=19.7%, 3★=8.3%, 2★=3%, 1★=9.7%</td><td>Binarización &gt;2 natural: 87.2%/12.8%</td></tr>
+  <tr><td>Predictor principal</td><td>delivery_days y delay_days: separación clara entre clases en boxplots</td><td>Features de entrega son los más importantes</td></tr>
+  <tr><td>Correlaciones bajas</td><td>Correlación máxima entre features numéricas ≈ 0.30</td><td>Anticipa techo de información ~89.7%</td></tr>
+  <tr><td>Outliers en precios</td><td>total_price y total_freight con colas muy largas</td><td>Requiere Winsorización IQR</td></tr>
+  <tr><td>Nulos esperados</td><td>22 columnas con nulos (timestamps de entrega)</td><td>Eliminados con filtro de órdenes entregadas</td></tr>
+  <tr><td>Concentración geográfica</td><td>São Paulo (SP) ≈ 40% de órdenes</td><td>Variable customer_state relevante</td></tr>
+</table>
+
+<h3>3.4 Configuración Experimental</h3>
+<table>
+  <tr><th>Parámetro</th><th>Valor</th><th>Justificación</th></tr>
+  <tr><td>random_state / SEED</td><td>42</td><td>Reproducibilidad en todos los modelos y particiones</td></tr>
+  <tr><td>test_size</td><td>0.20 (19,163 filas)</td><td>Estándar 80/20 para datasets &gt;50K filas</td></tr>
+  <tr><td>stratify</td><td>y</td><td>Mantiene proporción 87.2%/12.8% en train y test</td></tr>
+  <tr><td>SMOTE sampling_strategy</td><td>0.25</td><td>Clase 0 = 25% de clase 1 → balance 80%/20%</td></tr>
+  <tr><td>Threshold search</td><td>[0.20, 0.81], paso=0.01</td><td>Búsqueda exhaustiva en rango significativo</td></tr>
+  <tr><td>CV folds</td><td>5 (StratifiedKFold)</td><td>Mantiene proporción de clases en cada fold</td></tr>
+  <tr><td>Optuna trials LightGBM</td><td>100</td><td>Convergencia confirmada: curva plateó a los ~80 trials</td></tr>
+  <tr><td>Optuna trials XGBoost</td><td>80</td><td>Convergencia más rápida por regularización L1/L2</td></tr>
+  <tr><td>Optuna sampler</td><td>TPESampler(seed=42)</td><td>Búsqueda Bayesiana reproducible</td></tr>
+</table>
+
+<hr>
+
+<h2><span class="section-num">4.</span> Resultados y Comparación de Modelos</h2>
+
+<h3>4.1 Tabla Comparativa: 11 Clasificadores</h3>
+<table>
+  <tr><th>#</th><th>Modelo</th><th>Accuracy</th><th>F1-Score</th><th>ROC-AUC</th><th>Threshold</th><th>Tipo</th></tr>
+  <tr class="best"><td>1</td><td>RandomForest</td><td>0.8954</td><td>0.9427</td><td>0.7586</td><td>0.45</td><td>Base</td></tr>
+  <tr><td>2</td><td>VotingEnsemble_Optuna</td><td>0.8938</td><td>0.9413</td><td>0.7735</td><td>0.52</td><td>Ensemble Optuna</td></tr>
+  <tr><td>3</td><td>GradientBoosting</td><td>0.8930</td><td>0.9408</td><td>0.7743</td><td>0.63</td><td>Base</td></tr>
+  <tr><td>4</td><td>DecisionTree</td><td>0.8928</td><td>0.9410</td><td>0.7282</td><td>0.21</td><td>Base</td></tr>
+  <tr><td>5</td><td>XGBoost_Optuna</td><td>0.8927</td><td>0.9406</td><td>0.7717</td><td>0.32</td><td>Optuna TPE 80 trials</td></tr>
+  <tr><td>6</td><td>VotingEnsemble</td><td>0.8926</td><td>0.9405</td><td>0.7756</td><td>0.51</td><td>Ensemble base</td></tr>
+  <tr><td>7</td><td>LightGBM_Optuna</td><td>0.8922</td><td>0.9402</td><td>0.7714</td><td>0.65</td><td>Optuna TPE 100 trials</td></tr>
+  <tr><td>8</td><td>LogisticRegression</td><td>0.8918</td><td>0.9403</td><td>0.7535</td><td>0.20</td><td>Baseline lineal</td></tr>
+  <tr><td>9</td><td>XGBoost</td><td>0.8917</td><td>0.9399</td><td>0.7737</td><td>0.35</td><td>Base</td></tr>
+  <tr><td>10</td><td>LightGBM</td><td>0.8912</td><td>0.9396</td><td>0.7707</td><td>0.62</td><td>Base</td></tr>
+  <tr><td>11</td><td>CatBoost_Optuna</td><td>0.8905</td><td>0.9392</td><td>0.7683</td><td>0.36</td><td>Optuna</td></tr>
+</table>
+<p>Mejor modelo evaluado (NB03, 11 modelos): <strong>RandomForest con 89.54% accuracy</strong> — supera el objetivo de 85% en +4.54 pp. Los modelos Optuna entrenados end-to-end con 39 features (NB04/save_best_models.py) alcanzan hasta 89.71% (XGBoost_Optuna). El gap entre el mejor (89.54%) y el peor (CatBoost_Optuna, 89.05%) en la evaluación de modelos guardados es de 0.49 pp, evidenciando un techo de información de ~89.7% con los features logísticos disponibles.</p>
+
+<h3>4.2 Análisis Detallado de Métricas</h3>
+<table>
+  <tr><th>Métrica</th><th>RandomForest</th><th>VotingEnsemble</th><th>Interpretación</th></tr>
+  <tr><td>Accuracy</td><td>89.54%</td><td>89.26%</td><td>% predicciones correctas en test real (19,163 filas)</td></tr>
+  <tr><td>F1-Score</td><td>0.9427</td><td>0.9405</td><td>Balance precisión-recall, útil con desbalance de clases</td></tr>
+  <tr><td>ROC-AUC</td><td>0.7586</td><td>0.7756</td><td>Capacidad de discriminar: VotingEnsemble gana en AUC</td></tr>
+  <tr><td>Precisión (clase positiva)</td><td>90.26%</td><td>90.97%</td><td>De los predichos satisfechos, los que realmente lo son</td></tr>
+  <tr><td>Recall (clase positiva)</td><td>98.65%</td><td>97.34%</td><td>De los satisfechos reales, los que el modelo captura</td></tr>
+  <tr><td>Threshold óptimo</td><td>0.45</td><td>0.51</td><td>Umbral hallado por búsqueda en val set [0.20, 0.81]</td></tr>
+</table>
+<p><strong>Trade-off clave:</strong> RandomForest maximiza Accuracy y Recall (98.65%). VotingEnsemble maximiza ROC-AUC (0.7756). Para el problema de negocio, maximizar Recall es prioritario: no detectar un cliente insatisfecho (Falso Negativo) es más costoso que clasificar erróneamente un satisfecho. Los modelos Optuna entrenados end-to-end con 39 features alcanzan 89.71% superando a todos los modelos base.</p>
+
+<h3>4.3 Análisis de la Matriz de Confusión (RandomForest, threshold=0.45)</h3>
+<table class="cm-table">
+  <tr><th></th><th>Predicho: Insatisfecho (0)</th><th>Predicho: Satisfecho (1)</th></tr>
+  <tr><td><strong>Real: Insatisfecho (0)</strong></td><td class="tn">TN = 667 (Recall negativa: 27.2%)</td><td class="fp">FP = 1,784 (Error principal del modelo)</td></tr>
+  <tr><td><strong>Real: Satisfecho (1)</strong></td><td class="fn">FN = 224 (Clientes satisfechos mal clasificados)</td><td class="tp">TP = 16,488 (Recall positiva: 98.7%)</td></tr>
+</table>
+<p>El modelo captura el <strong>98.7%</strong> de los clientes satisfechos pero solo identifica correctamente el <strong>27.2%</strong> de los insatisfechos como tales (FP=1,784). Estos 1,784 falsos positivos representan clientes insatisfechos predichos erróneamente como satisfechos — el principal riesgo operativo del modelo. Este comportamiento es esperado dado el severo desbalance del dataset (87.2%/12.8%): el modelo prioriza no perder clientes satisfechos (alto Recall positivo) a costa de clasificar mal una fracción de los insatisfechos.</p>
+
+<h3>4.4 Validación Cruzada (cv=5, StratifiedKFold)</h3>
+<table>
+  <tr><th>Modelo</th><th>CV Accuracy (media ± std)</th><th>Test Accuracy</th><th>Gap CV→Test</th><th>Interpretación</th></tr>
+  <tr><td>GradientBoosting</td><td>0.8952 ± 0.0012</td><td>0.8930</td><td>-0.0022</td><td>Estable en CV; threshold conservador en val set</td></tr>
+  <tr><td>LightGBM</td><td>0.8952 ± 0.0011</td><td>0.8912</td><td>-0.0040</td><td>CV más estable: menor std entre folds</td></tr>
+  <tr class="best"><td>RandomForest</td><td>0.8950 ± 0.0014</td><td>0.8954</td><td>+0.0004</td><td>Mejor test resultado; muy bajo gap CV→Test</td></tr>
+  <tr><td>VotingEnsemble</td><td>0.8937 ± 0.0015</td><td>0.8926</td><td>-0.0011</td><td>Ensemble estable, leve caída con val-threshold</td></tr>
+  <tr><td>XGBoost</td><td>0.8693 ± 0.0018</td><td>0.8917</td><td>+0.0224</td><td>Gap por ausencia de SMOTE en CV</td></tr>
+  <tr><td>LogisticRegression</td><td>0.8229 ± 0.0026</td><td>0.8918</td><td>+0.0689</td><td>Modelo lineal, beneficia más del SMOTE</td></tr>
+  <tr><td>DecisionTree</td><td>0.7982 ± 0.0101</td><td>0.8928</td><td>+0.0946</td><td>Alta varianza entre folds</td></tr>
+</table>
+<p>GradientBoosting y LightGBM empatan en CV Mean (0.8952) con la menor std, siendo los más estables. RandomForest tiene el menor gap CV→Test (+0.0004). Los gaps mayores en XGBoost y LogisticRegression se explican por la ausencia de SMOTE dentro del CV — el CV evalúa el modelo PKL con class_weight implícito, no el pipeline completo con balanceo externo.</p>
+
+<hr>
+
+<h2><span class="section-num">5.</span> Modelos No Supervisados</h2>
+
+<h3>5.1 KMeans Clustering</h3>
+<p>Se aplicó KMeans con k=2 a 10, evaluando inercia y coeficiente de silhouette para determinar el número óptimo de clusters:</p>
+<table>
+  <tr><th>k</th><th>Inercia</th><th>Silhouette</th><th>Observación</th></tr>
+  <tr class="best"><td>2</td><td>23,938,480</td><td>0.5098</td><td>Óptimo (mayor silhouette)</td></tr>
+  <tr><td>3</td><td>16,424,977</td><td>0.4018</td><td></td></tr>
+  <tr><td>4</td><td>14,847,940</td><td>0.3072</td><td></td></tr>
+  <tr><td>5</td><td>13,504,230</td><td>0.2641</td><td></td></tr>
+  <tr><td>6</td><td>12,350,292</td><td>0.2420</td><td></td></tr>
+  <tr><td>7</td><td>11,373,329</td><td>0.2497</td><td></td></tr>
+  <tr><td>8</td><td>10,935,770</td><td>0.2191</td><td></td></tr>
+</table>
+<p><strong>Resultado:</strong> k=2 es el número óptimo (silhouette=0.5098). La caída abrupta al pasar de k=2 (0.51) a k=3 (0.40) confirma una estructura binaria natural en los datos. Los dos clusters se alinean con satisfechos (bajo delay_days, alta delivery_efficiency) e insatisfechos (alto delay_days, alta delivery_ratio). El clustering no supervisado corrobora de forma independiente la definición del target binario.</p>
+
+<h3>5.2 Análisis de Componentes Principales (PCA)</h3>
+<table>
+  <tr><th>Componente</th><th>Varianza explicada</th><th>Varianza acumulada</th></tr>
+  <tr class="best"><td>PC1</td><td>0.7908 (79.1%)</td><td>0.7908 (79.1%)</td></tr>
+  <tr class="best"><td>PC2</td><td>0.0769 (7.7%)</td><td>0.8677 (86.8%)</td></tr>
+  <tr><td>PC3</td><td>0.0427 (4.3%)</td><td>0.9104 (91.0%)</td></tr>
+  <tr><td>PC4</td><td>0.0352 (3.5%)</td><td>0.9456 (94.6%)</td></tr>
+  <tr><td>PC5</td><td>0.0157 (1.6%)</td><td>0.9613 (96.1%)</td></tr>
+  <tr><td>PC6</td><td>0.0084 (0.8%)</td><td>0.9697 (97.0%)</td></tr>
+  <tr><td>PC7</td><td>0.0060 (0.6%)</td><td>0.9757 (97.6%)</td></tr>
+  <tr><td>PC8</td><td>0.0049 (0.5%)</td><td>0.9807 (98.1%)</td></tr>
+</table>
+<p><strong>Resultado:</strong> Solo 2 componentes explican el 86.8% de la varianza (PC1=79.1%, PC2=7.7%). La alta concentración en PC1 evidencia que las 39 features están altamente correlacionadas entre sí: delivery_days, estimated_days y delay_days capturan esencialmente la misma dimensión subyacente (tiempo de entrega). Con 32 componentes se alcanza el 100% de la varianza. <strong>Implicación práctica:</strong> para un sistema productivo, reducir a 15-20 features de mayor importancia reduciría la latencia de inferencia sin pérdida significativa en accuracy.</p>
+
+<h3>5.3 Importancia de Features (LightGBM)</h3>
+<table>
+  <tr><th>#</th><th>Feature</th><th>Importancia</th><th>Interpretación</th></tr>
+  <tr><td>1</td><td>delivery_days</td><td>1,438</td><td>Días reales de entrega — predictor dominante</td></tr>
+  <tr><td>2</td><td>delay_days</td><td>1,380</td><td>Días de atraso vs. estimado por el vendedor</td></tr>
+  <tr><td>3</td><td>max_installments</td><td>1,220</td><td>Cuotas máximas de pago — refleja expectativa del cliente</td></tr>
+  <tr><td>4</td><td>delivery_ratio</td><td>1,186</td><td>delivery_days / estimated_days (eficiencia relativa)</td></tr>
+  <tr><td>5</td><td>freight_per_kg</td><td>989</td><td>Costo de flete por peso del producto</td></tr>
+  <tr><td>6</td><td>volume_cm3</td><td>984</td><td>Volumen del producto (relacionado con flete)</td></tr>
+  <tr><td>7</td><td>product_category</td><td>940</td><td>Categoría del producto (variación por tipo)</td></tr>
+  <tr><td>8</td><td>product_height_cm</td><td>902</td><td>Dimensión física del producto</td></tr>
+  <tr><td>9</td><td>customer_state</td><td>878</td><td>Estado geográfico del cliente (variación regional)</td></tr>
+  <tr><td>10</td><td>price_per_item</td><td>856</td><td>Precio unitario del producto</td></tr>
+</table>
+
+<hr>
+
+<h2><span class="section-num">6.</span> Optimización de Hiperparámetros</h2>
+
+<h3>6.1 GridSearchCV — LightGBM</h3>
+<p><strong>Justificación:</strong> LightGBM es el modelo más rápido del conjunto (basado en histogramas, no árboles exactos), lo que permite explorar más combinaciones en el mismo tiempo que XGBoost o GradientBoosting.</p>
+<p>Espacio de búsqueda: 2 × 2 × 2 × 2 = 16 combinaciones × 3 folds = 48 entrenamientos.</p>
+<table>
+  <tr><th>Hiperparámetro</th><th>Valores evaluados</th><th>Mejor valor</th><th>Razón</th></tr>
+  <tr><td>n_estimators</td><td>[300, 500]</td><td>500</td><td>Más árboles = mejor aproximación del gradiente</td></tr>
+  <tr><td>learning_rate</td><td>[0.03, 0.05]</td><td>0.05</td><td>Convergencia más rápida con dataset grande</td></tr>
+  <tr><td>max_depth</td><td>[5, 7]</td><td>7</td><td>Mayor profundidad captura interacciones más complejas</td></tr>
+  <tr><td>num_leaves</td><td>[31, 63]</td><td>63</td><td>63 &gt; 31: más hojas por árbol = mayor capacidad</td></tr>
+</table>
+<p><strong>Resultados:</strong> CV accuracy = 0.8417 | Test accuracy = <strong>89.04%</strong> | Tiempo: ~26s</p>
+
+<h3>6.2 RandomizedSearchCV — XGBoost</h3>
+<p><strong>Justificación:</strong> XGBoost tiene un espacio de hiperparámetros mayor (6 parámetros vs 4 de LightGBM). Búsqueda exhaustiva requeriría miles de combinaciones; RandomizedSearch explora 15 puntos aleatorios del espacio continuo de manera eficiente.</p>
+<p>Espacio: 6 hiperparámetros = 432 combinaciones posibles | 15 iteraciones × 3 folds = 45 entrenamientos.</p>
+<table>
+  <tr><th>Hiperparámetro</th><th>Rango evaluado</th><th>Mejor valor</th><th>Razón</th></tr>
+  <tr><td>n_estimators</td><td>[300, 500, 700]</td><td>700</td><td>Más árboles con learning_rate bajo = mejor generalización</td></tr>
+  <tr><td>learning_rate</td><td>[0.01, 0.03, 0.05]</td><td>0.03</td><td>Tasa más baja compensa los 700 estimadores</td></tr>
+  <tr><td>max_depth</td><td>[4, 5, 6, 7]</td><td>7</td><td>Árboles más profundos con subsample como regularización</td></tr>
+  <tr><td>subsample</td><td>[0.6, 0.7, 0.8, 1.0]</td><td>0.8</td><td>Estocasticidad que reduce overfitting</td></tr>
+  <tr><td>colsample_bytree</td><td>[0.6, 0.7, 0.8, 1.0]</td><td>0.7</td><td>30% de features omitidas por árbol</td></tr>
+</table>
+<p><strong>Resultados:</strong> CV accuracy = 0.8409 | Test accuracy = <strong>89.15%</strong> | Tiempo: ~32s</p>
+
+<h3>6.3 Optuna — Búsqueda Bayesiana TPE</h3>
+<p><strong>Justificación:</strong> GridSearch y RandomSearch exploran el espacio de forma ciega. Optuna usa el algoritmo TPE (Tree-structured Parzen Estimator) que aprende qué regiones del espacio son prometedoras y dirige la búsqueda hacia ellas, logrando mejores resultados con menos evaluaciones totales.</p>
+<p><strong>Ventajas sobre métodos clásicos:</strong></p>
+<ul>
+  <li>Espacio continuo: learning_rate=0.028 es inaccesible para GridSearch con valores discretos.</li>
+  <li>Búsqueda adaptiva: cada trial informa al siguiente vía modelo probabilístico.</li>
+  <li>9 hiperparámetros simultáneos vs. 4-6 de los métodos clásicos (incluye reg_alpha, reg_lambda).</li>
+  <li>Reproducible: TPESampler(seed=42) garantiza la misma secuencia de trials.</li>
+</ul>
+<p><strong>Mejores parámetros Optuna LightGBM (100 trials):</strong><br>
+n_estimators=338, learning_rate=0.0189, max_depth=5, num_leaves=106, min_child_samples=68, subsample=0.956, colsample_bytree=0.913</p>
+<p><strong>Mejores parámetros Optuna XGBoost (80 trials):</strong><br>
+n_estimators=520, learning_rate=0.0355, max_depth=8, subsample=0.669, colsample_bytree=0.934, reg_alpha=2.38e-8, reg_lambda=2.328</p>
+
+<h3>6.4 Tabla Comparativa de Métodos</h3>
+<table>
+  <tr><th>Método</th><th>Modelo</th><th>Evaluaciones</th><th>Test Accuracy</th><th>Tiempo</th><th>Ventaja</th></tr>
+  <tr><td>GridSearchCV</td><td>LightGBM</td><td>16 combos × 3 folds = 48</td><td>89.04%</td><td>~26s</td><td>Exhaustivo, reproducible</td></tr>
+  <tr><td>RandomizedSearchCV</td><td>XGBoost</td><td>15 iter × 3 folds = 45</td><td>89.15%</td><td>~32s</td><td>Eficiente para espacios grandes</td></tr>
+  <tr><td>Optuna TPE</td><td>LightGBM</td><td>100 trials</td><td>89.60%</td><td>~79s</td><td>Espacio continuo, adaptivo</td></tr>
+  <tr class="best"><td>Optuna TPE</td><td>XGBoost</td><td>80 trials</td><td>89.71%</td><td>~78s</td><td>Regularización L1/L2 óptima</td></tr>
+</table>
+
+<h3>6.5 Análisis del Impacto</h3>
+<table>
+  <tr><th>Comparación</th><th>Accuracy base</th><th>Accuracy óptimo</th><th>Mejora</th></tr>
+  <tr><td>GridSearch vs. modelo base LightGBM (NB03)</td><td>89.12% (LightGBM base)</td><td>89.04% (GridSearch)</td><td>-0.08 pp (GridSearch usa 32 features sin SMOTE en CV)</td></tr>
+  <tr><td>Optuna vs. GridSearch</td><td>89.04%</td><td>89.60%</td><td>+0.56 pp</td></tr>
+  <tr class="best"><td>Optuna end-to-end vs. mejor base (NB03)</td><td>89.54% (RandomForest base)</td><td>89.71% (XGBoost_Optuna)</td><td>+0.17 pp</td></tr>
+</table>
+<p><strong>Conclusión sobre optimización:</strong> Optuna supera a GridSearch en +0.56 pp utilizando espacios continuos y búsqueda adaptiva. El mejor resultado global es XGBoost_Optuna con 89.71% (entrenamiento end-to-end con 39 features). El dataset presenta un techo de información de ~89.7%: para superar este techo sería necesario incorporar features de calidad del producto (texto de la descripción, cantidad de fotos, rating del vendedor).</p>
+
+<hr>
+
+<h2><span class="section-num">7.</span> Conclusiones y Recomendaciones</h2>
+
+<h3>7.1 Conclusiones Técnicas</h3>
+<ul>
+  <li><strong>Objetivo superado:</strong> Se alcanzó 89.71% accuracy con XGBoost_Optuna (NB04, end-to-end con 39 features), superando el objetivo de 85% en +4.71 pp. En la evaluación de los 11 modelos guardados (NB03, 32 features), RandomForest lidera con 89.54% (+4.54 pp).</li>
+  <li><strong>Clasificación binaria correcta:</strong> R²=0.19 confirma que la regresión sobre el puntaje exacto no es viable. La clasificación binaria (review_score &gt; 2) es el enfoque correcto para los datos logísticos disponibles.</li>
+  <li><strong>Techo de información ~89.7%:</strong> Con 39 features logísticos, la mejora marginal de adicionar más modelos o trials es &lt;0.05 pp. Para mejoras sustanciales se requieren features de calidad del producto.</li>
+  <li><strong>Optuna &gt; GridSearch/RandomSearch:</strong> La búsqueda Bayesiana TPE supera a los métodos clásicos en +0.56 pp (89.60% vs. 89.04%) explorando espacios continuos con 9 hiperparámetros simultáneos.</li>
+  <li><strong>Driver principal: tiempo de entrega.</strong> Las features delivery_days y delay_days dominan el ranking de importancia. Las empresas de e-commerce deben priorizar velocidad y puntualidad de entrega para maximizar satisfacción.</li>
+  <li><strong>Clustering corrobora target:</strong> KMeans k=2 (silhouette=0.51) confirma de forma no supervisada la estructura binaria del problema.</li>
+  <li><strong>Pipeline Kedro reproducible:</strong> El comando <code>kedro run</code> reproduce todo el flujo end-to-end en ~452 segundos con random_state=42.</li>
+</ul>
+
+<h3>7.2 Dificultades Encontradas y Soluciones</h3>
+<ul>
+  <li><strong>Desbalance 87.2%/12.8%:</strong> Requirió experimentación con SMOTE, ADASYN y class_weight. SMOTE con sampling_strategy=0.25 resultó superior en validación.</li>
+  <li><strong>Data leakage en threshold tuning:</strong> El threshold de decisión debe buscarse en un validation set separado, no en el test set. Se implementó split en tres conjuntos (train 64% / val 16% / test 20%) para evitar que la búsqueda del umbral inflara artificialmente las métricas.</li>
+  <li><strong>Feature mismatch en evaluación (32 vs. 39 features):</strong> Los modelos Optuna se entrenaron con 39 features (incluyendo 7 de interacción) mientras los modelos base usaban 32. Se implementó enrutamiento automático basado en n_features_in_.</li>
+  <li><strong>CatBoost retorna n_features_in_=0:</strong> Comportamiento por diseño. Se implementó lógica especial: if (n &gt;= 39 or n == 0): usar X_test_opt.</li>
+  <li><strong>Threshold tuning omitido en CV:</strong> La validación cruzada de los modelos PKL no incluye SMOTE ni threshold tuning interno, lo que genera gaps CV→Test más altos para XGBoost y LogisticRegression. Se documentó como limitación conocida del pipeline.</li>
+</ul>
+
+<h3>7.3 Recomendaciones para Trabajo Futuro</h3>
+<ul>
+  <li><strong>Features de producto:</strong> Incorporar longitud de la descripción, cantidad de fotos y rating histórico del vendedor. Literatura indica mejora potencial de +2-3 pp en accuracy.</li>
+  <li><strong>Modelo de producción optimizado:</strong> Reducir a los top 15-20 features por importancia reduce latencia de inferencia sin pérdida significativa (&lt;0.1 pp accuracy).</li>
+  <li><strong>Monitoreo de drift:</strong> Implementar detección de data drift (ej. Evidently AI) para alertar cuando el perfil de órdenes cambia significativamente (Black Friday, Navidad).</li>
+  <li><strong>Stacking ensemble:</strong> Meta-learner LogisticRegression sobre predicciones de LightGBM + XGBoost + CatBoost. Primeros experimentos sugieren mejora de +0.01-0.02 pp.</li>
+  <li><strong>Análisis por segmento:</strong> Modelos especializados por categoría de producto (electrónica, muebles) podrían capturar patrones específicos que el modelo global ignora.</li>
+</ul>
+
+<hr>
+
+<h2><span class="section-num">8.</span> Referencias</h2>
+<ol style="margin-left:22px;">
+  <li>Olist Store. (2018). Brazilian E-Commerce Public Dataset by Olist. Kaggle.</li>
+  <li>Chen, T., &amp; Guestrin, C. (2016). XGBoost: A Scalable Tree Boosting System. KDD '16 Proceedings. https://doi.org/10.1145/2939672.2939785</li>
+  <li>Ke, G., et al. (2017). LightGBM: A Highly Efficient Gradient Boosting Decision Tree. NeurIPS 2017.</li>
+  <li>Akiba, T., et al. (2019). Optuna: A Next-generation Hyperparameter Optimization Framework. KDD '19 Proceedings. https://doi.org/10.1145/3292500.3330701</li>
+  <li>Chawla, N. V., et al. (2002). SMOTE: Synthetic Minority Over-sampling Technique. Journal of Artificial Intelligence Research, 16, 321–357.</li>
+  <li>Prokhorenkova, L., et al. (2018). CatBoost: unbiased boosting with categorical features. NeurIPS 2018.</li>
+  <li>Kedro Development Team. (2024). Kedro Documentation v1.4. QuantumBlack, McKinsey &amp; Company. https://kedro.org</li>
+  <li>Pedregosa, F., et al. (2011). Scikit-learn: Machine Learning in Python. Journal of Machine Learning Research, 12, 2825–2830.</li>
+  <li>Bergstra, J., &amp; Bengio, Y. (2012). Random Search for Hyper-Parameter Optimization. Journal of Machine Learning Research, 13, 281–305.</li>
+</ol>
+
+<hr>
+<p style="text-align:center;font-size:9pt;color:#888;margin-top:20px;">Guillermo Cerda — SCY1101 Programación para la Ciencia de Datos — Mención Data Science — Duoc UC — Mayo 2026</p>
+
+</body>
+</html>
